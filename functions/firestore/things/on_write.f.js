@@ -24,22 +24,25 @@ try {
 
 exports = module.exports = functions.firestore
   .document('things/{id}')
-  .onWrite(async (change, context) => {
+  .onWrite(handle);
+
+async function handle(change, context) {
+  // Ignore deletes
+  if (change.after.exists) {
+    const data = change.after.data();
+
+    let images = findImageSources(data.html);
     
-    // Ignore deletes
-    if (change.after.exists) {
-        const data = change.after.data();
+    for(const img of images) {
 
-        let images = findImageSources(data.html);
-        
-        for(const img of images) {
-
-            identifyImage(img);
-        }
+        identifyImage(img);
     }
 
-    return null;
-  });
+   
+}
+
+return Promise.resolve(true);
+}
 
 async function identifyImage(img) {
     console.log(`Identifying ${img}`);
@@ -52,11 +55,11 @@ async function identifyImage(img) {
         const result = await spawn('identify', ['-verbose', tempLocalFile], {capture: ['stdout', 'stderr']});
 
         console.log(imageMagickOutputToObject(result.stdout));
-
     
     } finally {
         // Cleanup temp directory after metadata is extracted
         // Remove the file from temp directory
+        console.log('Unlinking local file from temp location', tempLocalFile);
         fs.unlinkSync(tempLocalFile);
     }
 
@@ -110,52 +113,32 @@ function createFile(filePath) {
   return tempLocalFile;
 }
 
-async function downloadImage(img, tempLocalFile) {
+function downloadImage(img, tempLocalFile) {
     // TODO: download image
     console.log(`Downloading image ${img}`);
-    // request
-    //     .get(img)
-    //     .on('response', response => {
-    //         console.log(response.statusCode);
-    //         console.log(response.headers['content-type']);
-    //     })
-    //     .on('error', err => {
-    //         console.log(err);
-    //     })
-    //     .pipe(fs.createWriteStream(tempLocalFile));
 
-    let write = fs.createWriteStream(tempLocalFile);
+    return new Promise( (resolve, reject ) => {
+      request
+        .get(img, {time : true})
+        .on('response', response => {
+            console.log('RESPONSE: ', response.statusCode, response.headers);
+        })
+        .on('error', err => {
+            console.log(err);
+            reject(err);
+        })
+        .on('end', () => {
+          console.log('Done downloading');
 
-    // https.get(img, (res) => {
-    //     console.log(`statusCode ${res.statusCode}`);
-    //     console.log(`headers: ${res.headers}`);
+          let stats = fs.statSync(tempLocalFile);
+          let statPretty = JSON.stringify(stats);
 
-    //     res.on('data', d => {
-    //         console.log(`Data arrived...`);
-    //     });
-    // })
-    // .on('error', e => {
-    //     console.error(e);
-    //     throw Error('Endpoint is not available');
-    // })
-    
-    var options = {
-        method: 'GET',
-        uri: img,
-        resolveWithFullResponse: true,
-        simple: false,
-        family: 4
-    };
-    let request = await rp.get(options)
-        .then((res) => {
-            return "data:" + res.headers["content-type"] + ";base64," + new Buffer(res.body).toString('base64');
-        });
-
-    console.log(request);
-
-    let stats = fs.statSync(tempLocalFile);
-    let statPretty = JSON.stringify(stats);
-    console.log(`Downloaded ${statPretty}`);
+          console.log(`Downloaded ${statPretty}`);
+          resolve(tempLocalFile);
+          
+        })
+        .pipe(fs.createWriteStream(tempLocalFile));
+    })
 }
 
 function findImageSources(htmlSource) {

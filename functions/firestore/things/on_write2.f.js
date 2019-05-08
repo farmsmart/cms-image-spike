@@ -113,19 +113,6 @@ function downloadImage(img, tempLocalFile) {
     // TODO: download image
     console.log(`Downloading image ${img}`);
 
-    //let write = fs.createWriteStream(tempLocalFile);
-
-    // request
-    //     .get(img)
-    //     .on('response', response => {
-    //         console.log(response.statusCode);
-    //         console.log(response.headers['content-type']);
-    //     })
-    //     .on('error', err => {
-    //         console.log(err);
-    //     })
-    //     .pipe(fs.createWriteStream(tempLocalFile));
-
     // First download the file to local
     return new Promise( (resolve, reject ) => {
       request
@@ -160,10 +147,11 @@ function downloadImage(img, tempLocalFile) {
         let output = imageMagickOutputToObject(result.stdout); 
         console.log(output);
 
-        return Promise.resolve(output);
+        return Promise.resolve(tempLocalFile);
     })
+    .then(uploadImageToBucket)
     .then(() => {
-      console.log('Cleaning up temporary file.')
+      console.log(`Cleaning up temporary file.`)
       fs.unlinkSync(tempLocalFile);
       return Promise.resolve(true);
     })
@@ -171,36 +159,20 @@ function downloadImage(img, tempLocalFile) {
       console.log(err);
       fs.unlinkSync(tempLocalFile);
     });
-
-    // https.get(img, (res) => {
-    //     console.log(`statusCode ${res.statusCode}`);
-    //     console.log(`headers: ${res.headers}`);
-
-    //     res.on('data', d => {
-    //         console.log(`Data arrived...`);
-    //     });
-    // })
-    // .on('error', e => {
-    //     console.error(e);
-    //     throw Error('Endpoint is not available');
-    // })
     
-    // var options = {
-    //     method: 'GET',
-    //     uri: img,
-    //     resolveWithFullResponse: true,
-    //     simple: false,
-    //     time: true,
-    //     family: 4
-    // };
-    // let request = await rp.get(options)
-    //     .then((res) => {
-    //         console.log(typeof res.body);
-    //         return "data:" + res.headers["content-type"] + ";base64," + new Buffer(res.body).toString('base64');
-    //     });
+}
 
-    // console.log(request);
-    
+function uploadImageToBucket(localFile) {
+  const JPEG_EXTENSION = '.jpg';
+   const bucket = admin.storage().bucket();
+   
+   const fileDir = 'img';
+   const baseFileName = `Articles`;
+   const JPEGFilePath = path.normalize(path.format({dir: fileDir, name: baseFileName, ext: JPEG_EXTENSION}));
+
+   console.log(`Uploading ${JPEGFilePath}...`);
+
+   return bucket.upload(localFile, {destination: JPEGFilePath});
 }
 
 function findImageSources(htmlSource) {
